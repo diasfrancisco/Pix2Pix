@@ -33,13 +33,13 @@ class CNNBlock(nn.Module):
         else:
             self.decoder = nn.Sequential(*decoder_layers)
 
-class Generator(nn.Module):  
+class UNet(nn.Module):  
     def __init__(self, features, in_dim, out_dim):
         self.features = features
         self.in_dim = in_dim
         self.out_dim = out_dim
         
-    def forward(self):
+    def forward(self, X):
         self.e1 = CNNBlock(in_channels=self.in_dim, out_channels=self.features, batch_norm=False) #64
         self.e2 = CNNBlock(in_channels=self.e1, out_channels=self.features*2, batch_norm=True) #128
         self.e3 = CNNBlock(in_channels=self.e2, out_channels=self.features*4, batch_norm=True) #256
@@ -59,3 +59,5 @@ class Generator(nn.Module):
         self.d8 = CNNBlock(in_channels=torch.cat(self.d7, self.e1, 1), out_channels=self.out_dim, dropout=False) #128
         
         self.final = nn.Tanh(self.d8)
+        
+        return self.final
