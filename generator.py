@@ -9,11 +9,11 @@ class CNNBlock:
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.encoder_layers = [
-            nn.Conv2d(self.in_channels, self.out_channels, 4, 2, 1),
+            nn.Conv2d(self.in_channels, self.out_channels, 4, 2, 1, bias=False, padding_mode="reflect"),
             nn.LeakyReLU(negative_slope=0.2)
         ]
         self.decoder_layers = [
-            nn.ConvTranspose2d(self.in_channels, self.out_channels, 4, 2, 1),
+            nn.ConvTranspose2d(self.in_channels, self.out_channels, 4, 2, 1, bias=False),
             nn.BatchNorm2d(num_features=self.out_channels),
             nn.ReLU()
         ]
@@ -49,7 +49,6 @@ class UNet(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         
-    def forward(self, x):
         self.e1 = CNNBlock(in_channels=self.in_dim, out_channels=self.features).encoder_block(batch_norm=False).to(device=config.DEVICE) #64
         self.e2 = CNNBlock(in_channels=self.features, out_channels=self.features*2).encoder_block(batch_norm=True).to(device=config.DEVICE) #128
         self.e3 = CNNBlock(in_channels=self.features*2, out_channels=self.features*4).encoder_block(batch_norm=True).to(device=config.DEVICE) #256
@@ -57,37 +56,43 @@ class UNet(nn.Module):
         self.e5 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
         self.e6 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
         self.e7 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
-        self.e8 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
+        
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(features*8, features*8, 4, 2, 1, padding_mode="reflect"),
+            nn.ReLU()
+        )
         
         self.d1 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #512
-        self.d2 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #1024
-        self.d3 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #1024
-        self.d4 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).decoder_block(dropout=False).to(device=config.DEVICE) #1024
-        self.d5 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).decoder_block(dropout=False).to(device=config.DEVICE) #1024
-        self.d6 = CNNBlock(in_channels=self.features*8, out_channels=self.features*4).decoder_block(dropout=False).to(device=config.DEVICE) #512
-        self.d7 = CNNBlock(in_channels=self.features*4, out_channels=self.features*2).decoder_block(dropout=False).to(device=config.DEVICE) #256
-        self.d8 = CNNBlock(in_channels=self.features*2, out_channels=self.out_dim).decoder_block(dropout=False).to(device=config.DEVICE) #128
+        self.d2 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #1024
+        self.d3 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #1024
+        self.d4 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8).decoder_block(dropout=False).to(device=config.DEVICE) #1024
+        self.d5 = CNNBlock(in_channels=self.features*16, out_channels=self.features*4).decoder_block(dropout=False).to(device=config.DEVICE) #512
+        self.d6 = CNNBlock(in_channels=self.features*8, out_channels=self.features*2).decoder_block(dropout=False).to(device=config.DEVICE) #256
+        self.d7 = CNNBlock(in_channels=self.features*4, out_channels=self.features).decoder_block(dropout=False).to(device=config.DEVICE) #128
         
-        x1 = self.e1(x.float())
-        x2 = self.e2(x1)
-        x3 = self.e3(x2)
-        x4 = self.e4(x3)
-        x5 = self.e5(x4)
-        x6 = self.e6(x5)
-        x7 = self.e7(x6)
-        x8 = self.e8(x7)
+        self.final = nn.Sequential(
+            nn.ConvTranspose2d(features*2, self.out_dim, 4, 2, 1),
+            nn.Tanh()
+        )
         
-        x9 = self.d1(x8)
-        print(x9.shape, x7.shape)
-        x10 = self.d2(torch.cat((x9, x7), dim=1))
-        x11 = self.d3(torch.cat((x10, x6), dim=0))
-        x12 = self.d4(torch.cat((x11, x5), dim=0))
-        x13 = self.d5(torch.cat((x12, x4), dim=0))
-        x14 = self.d6(torch.cat((x13, x3), dim=0))
-        x15 = self.d7(torch.cat((x14, x2), dim=0))
-        x16 = self.d8(torch.cat((x15, x1), dim=0))
-        print(x16.shape)
+    def forward(self, x):
+        down1 = self.e1(x.float())
+        down2 = self.e2(down1)
+        down3 = self.e3(down2)
+        down4 = self.e4(down3)
+        down5 = self.e5(down4)
+        down6 = self.e6(down5)
+        down7 = self.e7(down6)
         
-        y_gen = nn.Tanh(x16)
+        x_bottleneck = self.bottleneck(down7)
         
-        return y_gen
+        up1 = self.d1(x_bottleneck)
+        up2 = self.d2(torch.cat((up1, down7), dim=1))
+        up3 = self.d3(torch.cat((up2, down6), dim=1))
+        up4 = self.d4(torch.cat((up3, down5), dim=1))
+        up5 = self.d5(torch.cat((up4, down4), dim=1))
+        up6 = self.d6(torch.cat((up5, down3), dim=1))
+        up7 = self.d7(torch.cat((up6, down2), dim=1))
+        up8 = self.final(torch.cat((up7, down1), dim=1))
+
+        return up8
