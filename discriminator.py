@@ -17,12 +17,14 @@ class PatchGAN(nn.Module):
             nn.LeakyReLU()
         )
         self.final = nn.Sequential(
-            nn.Conv2d(self.features*8, out_dim, 4, 1, padding_mode="reflect")
+            nn.Conv2d(self.features*8, out_dim, 4, 1, padding_mode="reflect"),
+            nn.Sigmoid()
         )
         
-    def forward(self, input):
-        x1 = self.conv1(input.float())
+    def forward(self, x):
+        x1 = self.conv1(x.float())
         x2 = self.conv2(x1)
         x3 = self.conv3(x2)
         x4 = self.conv4(x3)
+        
         return self.final(x4)

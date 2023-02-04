@@ -32,7 +32,7 @@ def run():
     
     # Trains the cGAN
     train_inst = Training(gen_model=gen, disc_model=disc)
-    train = train_inst.cgan_training(
+    train_inst.cgan_training(
         epochs=config.EPOCHS,
         train_data=train_loader,
         val_data=val_loader
