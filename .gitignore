@@ -164,4 +164,7 @@ secrets.txt
 
 # Folders
 raw
+checkpoints
 final_models
+test_inf
+runs

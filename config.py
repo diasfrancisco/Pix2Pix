@@ -26,8 +26,9 @@ BATCH_SIZE = 1
 EPOCHS = 200
 
 # Save and load models
-BASE_DIR = './final_models'
 MODEL = datetime.now().strftime('%d_%b_%Y_%H_%M_%S_%f')
-GEN_MODEL_DIR = f'./final_models/{MODEL}/gen/'
-DISC_MODEL_DIR = f'./final_models/{MODEL}/disc/'
+GEN_MODEL_DIR = f'./checkpoints/{MODEL}/gen/'
+DISC_MODEL_DIR = f'./checkpoints/{MODEL}/disc/'
 SAVE_MODEL = 5
+
+EXAMPLES_DIR = f'./examples/{MODEL}/'

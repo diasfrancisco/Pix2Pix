@@ -4,43 +4,25 @@ import torch.nn as nn
 import config
 
 
-class CNNBlock:
-    def __init__(self, in_channels: int, out_channels: int):
+class CNNBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, enc: bool, dropout: bool):
+        super(CNNBlock, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.encoder_layers = [
-            nn.Conv2d(self.in_channels, self.out_channels, 4, 2, 1, bias=False, padding_mode="reflect"),
-            nn.LeakyReLU(negative_slope=0.2)
-        ]
-        self.decoder_layers = [
-            nn.ConvTranspose2d(self.in_channels, self.out_channels, 4, 2, 1, bias=False),
+        self.dropout = dropout
+        self.dropout_inst = nn.Dropout()
+        
+        self.conv = nn.Sequential(
+            nn.Conv2d(self.in_channels, self.out_channels, 4, 2, 1, bias=False, padding_mode="reflect")
+            if enc else nn.ConvTranspose2d(self.in_channels, self.out_channels, 4, 2, 1, bias=False),
             nn.BatchNorm2d(num_features=self.out_channels),
-            nn.ReLU()
-        ]
-            
-    def encoder_block(self, batch_norm: bool):
-        if batch_norm == True:
-            self.encoder_layers.insert(
-                1,
-                nn.BatchNorm2d(num_features=self.out_channels)
-            )
-            self.encoder = nn.Sequential(*self.encoder_layers)
-            return self.encoder
-        else:
-            self.encoder = nn.Sequential(*self.encoder_layers)
-            return self.encoder
+            nn.LeakyReLU(negative_slope=0.2)
+            if enc else nn.ReLU()
+        )
     
-    def decoder_block(self, dropout: bool):
-        if dropout == True:
-            self.decoder_layers.insert(
-                2,
-                nn.Dropout2d(p=0.5)
-            )
-            self.decoder = nn.Sequential(*self.decoder_layers)
-            return self.decoder
-        else:
-            self.decoder = nn.Sequential(*self.decoder_layers)
-            return self.decoder
+    def forward(self, x):
+        x = self.conv(x)
+        return self.dropout_inst(x) if self.dropout else x
 
 class UNet(nn.Module):
     def __init__(self, features: int, in_dim: int, out_dim: int):
@@ -49,26 +31,29 @@ class UNet(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         
-        self.e1 = CNNBlock(in_channels=self.in_dim, out_channels=self.features).encoder_block(batch_norm=False).to(device=config.DEVICE) #64
-        self.e2 = CNNBlock(in_channels=self.features, out_channels=self.features*2).encoder_block(batch_norm=True).to(device=config.DEVICE) #128
-        self.e3 = CNNBlock(in_channels=self.features*2, out_channels=self.features*4).encoder_block(batch_norm=True).to(device=config.DEVICE) #256
-        self.e4 = CNNBlock(in_channels=self.features*4, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
-        self.e5 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
-        self.e6 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
-        self.e7 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).encoder_block(batch_norm=True).to(device=config.DEVICE) #512
+        self.e1 = nn.Sequential(
+            nn.Conv2d(self.in_dim, self.features, 4, 2, 1, padding_mode="reflect"),
+            nn.LeakyReLU(0.2)
+        )
+        self.e2 = CNNBlock(in_channels=self.features, out_channels=self.features*2, dropout=False, enc=True) #128
+        self.e3 = CNNBlock(in_channels=self.features*2, out_channels=self.features*4, dropout=False, enc=True) #256
+        self.e4 = CNNBlock(in_channels=self.features*4, out_channels=self.features*8, dropout=False, enc=True) #512
+        self.e5 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8, dropout=False, enc=True) #512
+        self.e6 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8, dropout=False, enc=True) #512
+        self.e7 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8, dropout=False, enc=True) #512
         
         self.bottleneck = nn.Sequential(
             nn.Conv2d(features*8, features*8, 4, 2, 1, padding_mode="reflect"),
             nn.ReLU()
         )
         
-        self.d1 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #512
-        self.d2 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #1024
-        self.d3 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8).decoder_block(dropout=True).to(device=config.DEVICE) #1024
-        self.d4 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8).decoder_block(dropout=False).to(device=config.DEVICE) #1024
-        self.d5 = CNNBlock(in_channels=self.features*16, out_channels=self.features*4).decoder_block(dropout=False).to(device=config.DEVICE) #512
-        self.d6 = CNNBlock(in_channels=self.features*8, out_channels=self.features*2).decoder_block(dropout=False).to(device=config.DEVICE) #256
-        self.d7 = CNNBlock(in_channels=self.features*4, out_channels=self.features).decoder_block(dropout=False).to(device=config.DEVICE) #128
+        self.d1 = CNNBlock(in_channels=self.features*8, out_channels=self.features*8, dropout=True, enc=False) #512
+        self.d2 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8, dropout=True, enc=False) #1024
+        self.d3 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8, dropout=True, enc=False) #1024
+        self.d4 = CNNBlock(in_channels=self.features*16, out_channels=self.features*8, dropout=False, enc=False) #1024
+        self.d5 = CNNBlock(in_channels=self.features*16, out_channels=self.features*4, dropout=False, enc=False) #512
+        self.d6 = CNNBlock(in_channels=self.features*8, out_channels=self.features*2, dropout=False, enc=False) #256
+        self.d7 = CNNBlock(in_channels=self.features*4, out_channels=self.features, dropout=False, enc=False) #128
         
         self.final = nn.Sequential(
             nn.ConvTranspose2d(features*2, self.out_dim, 4, 2, 1),
