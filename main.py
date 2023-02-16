@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from tqdm import tqdm
@@ -10,9 +10,10 @@ from dataset import Pix2PixDataset
 from generator import UNet
 from discriminator import PatchGAN
 from utils import save_checkpoint, save_some_examples
+from val import validation
 
 
-def cgan_training(gen, disc, gen_optim, disc_optim, train_loader, val_loader, epoch):
+def cgan_training(gen, disc, gen_optim, disc_optim, train_loader, writer, epoch):
     for batch in train_loader:
         # Train the discriminator
         x, y = batch
@@ -48,18 +49,11 @@ def cgan_training(gen, disc, gen_optim, disc_optim, train_loader, val_loader, ep
         total_gen_loss.backward()
         gen_optim.step()
         
-    # for batch in val_loader:
-    #     x, y = next(iter(val_loader))
-    #     x, y = x.to(device=config.DEVICE), y.to(device=config.DEVICE)
-        
-    #     gen.eval()
-    #     with torch.no_grad():
-    #         img = gen(x)
-    #         img = img * 0.5 + 0.5
-    #         if config.SAVE_MODEL and epoch % 5 == 0:
-    #             # writer.add_image(tag=f'y_gen_{epoch}', img_tensor=img[0], global_step=epoch)
-    #             save_some_examples(img, img_name=f'y_gen_{epoch}.png')
-    #     gen.train()
+        writer.add_scalars(
+            'cGAN',
+            {'GenLoss': total_gen_loss.item(), 'DiscLoss': total_disc_loss.item()},
+            epoch
+        )
 
 def run():
     # Creates the training and validation dataset
@@ -87,7 +81,7 @@ def run():
     gen_optim = Adam(params=gen.parameters(), lr=config.LEARNING_RATE, betas=(config.B1, config.B2))
     disc_optim = Adam(params=disc.parameters(), lr=config.LEARNING_RATE, betas=(config.B1, config.B2))
     
-    # writer = SummaryWriter()
+    writer = SummaryWriter()
     
     for epoch in range(1, config.EPOCHS+1):
         print(f'Epoch: {epoch}/{config.EPOCHS}')
@@ -96,7 +90,9 @@ def run():
             save_checkpoint(gen, gen_optim, str(config.GEN_MODEL_DIR + f'gen_{epoch}.pt'))
             save_checkpoint(disc, disc_optim, str(config.DISC_MODEL_DIR + f'disc_{epoch}.pt'))
 
-        cgan_training(gen, disc, gen_optim, disc_optim, train_loader, val_loader, epoch)
+        cgan_training(gen, disc, gen_optim, disc_optim, train_loader, writer, epoch)
+
+    validation(val_loader, gen, gen_optim)
 
 if __name__ == "__main__":
     run()
